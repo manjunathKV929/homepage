@@ -1,44 +1,39 @@
 import { MetricCardData, FlavorFeature } from '@/types';
 
 export const BRAND_NAME = 'ITZ FIZZ';
-export const HEADLINE_LINE1 = 'WELCOME';
-export const HEADLINE_LINE2 = 'ITZ FIZZ';
+export const HEADLINE_TEXT = 'WELCOME ITZ FIZZ';
 
 export const METRIC_CARDS: MetricCardData[] = [
   {
-    id: 'refreshing',
-    value: '87%',
-    label: 'REFRESHING VIBE',
-    description: 'Instant crisp cooling sensation powered by botanical citrus extracts.',
+    id: 'box1',
+    value: '58%',
+    label: 'Increase in pick up point use',
     position: 'top',
-    progressTrigger: 0.15,
+    progressTrigger: 0.22,
     theme: 'lime',
   },
   {
-    id: 'flavor',
-    value: '92%',
-    label: 'PURE FLAVOR',
-    description: 'Natural blood orange & yuzu zest. Zero added sugars or artificial coloring.',
-    position: 'top',
+    id: 'box2',
+    value: '23%',
+    label: 'Decreased in customer phone calls',
+    position: 'bottom',
     progressTrigger: 0.42,
+    theme: 'blue',
+  },
+  {
+    id: 'box3',
+    value: '27%',
+    label: 'Increase in pick up point use',
+    position: 'top',
+    progressTrigger: 0.62,
     theme: 'dark',
   },
   {
-    id: 'energy',
-    value: '78%',
-    label: 'CLEAN ENERGY',
-    description: 'Sustained focus from organic matcha extract without jitters or midday crash.',
+    id: 'box4',
+    value: '40%',
+    label: 'Decreased in customer phone calls',
     position: 'bottom',
-    progressTrigger: 0.65,
-    theme: 'cyan',
-  },
-  {
-    id: 'circular',
-    value: '100%',
-    label: 'SUSTAINABILITY',
-    description: 'Infinitely recyclable sleek aluminum chassis engineered with zero waste.',
-    position: 'bottom',
-    progressTrigger: 0.88,
+    progressTrigger: 0.82,
     theme: 'orange',
   },
 ];

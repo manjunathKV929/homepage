@@ -1,18 +1,17 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useGSAP } from '@gsap/react';
 import ProductVisual from './ProductVisual';
 import MetricCard from './MetricCard';
 import HeroHeadline from './HeroHeadline';
 import ScrollCue from './ScrollCue';
 import { METRIC_CARDS } from '@/lib/constants';
 
-// Register ScrollTrigger plugin safely
-if (typeof window !== 'undefined') {
-  gsap.registerPlugin(ScrollTrigger);
-}
+// Register plugins once at module level — safe in Next.js client components
+gsap.registerPlugin(ScrollTrigger, useGSAP);
 
 interface HeroSectionProps {
   reducedMotion: boolean;
@@ -24,67 +23,92 @@ export default function HeroSection({
   onProgressChange,
 }: HeroSectionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const trackWrapperRef = useRef<HTMLDivElement>(null);
-  const trackFillRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const roadRef = useRef<HTMLDivElement>(null);
+  const trailRef = useRef<HTMLDivElement>(null);
   const carWrapperRef = useRef<HTMLDivElement>(null);
-  const [scrollProgress, setScrollProgress] = useState(0);
 
-  useEffect(() => {
-    // If reduced motion is requested, show static accessible layout
-    if (reducedMotion) {
-      if (trackFillRef.current) {
-        trackFillRef.current.style.width = '100%';
+  // useGSAP handles: context scoping, cleanup on unmount, React Strict Mode safe
+  useGSAP(
+    () => {
+      const container = containerRef.current;
+      const track = trackRef.current;
+      const road = roadRef.current;
+      const trail = trailRef.current;
+      const carVisual = carWrapperRef.current;
+
+      if (!container || !track || !road || !trail || !carVisual) return;
+
+      const letters = Array.from(
+        container.querySelectorAll<HTMLElement>('.headline-letter')
+      );
+      const cardElements = Array.from(
+        container.querySelectorAll<HTMLElement>('.metric-card')
+      );
+
+      // ── Reduced-motion: show static final state immediately ──────────────
+      if (reducedMotion) {
+        trail.style.width = '100%';
+        letters.forEach((l) => { l.style.opacity = '1'; });
+        cardElements.forEach((c) => {
+          c.style.opacity = '1';
+          c.style.transform = 'none';
+        });
+        gsap.set(carVisual, { x: 0, opacity: 1, scale: 1 });
+        onProgressChange?.(1);
+        return;
       }
-      if (carWrapperRef.current) {
-        gsap.set(carWrapperRef.current, { x: 0, opacity: 1 });
-      }
-      const cards = containerRef.current?.querySelectorAll('.metric-card');
-      if (cards) {
-        gsap.set(cards, { opacity: 1, y: 0, scale: 1 });
-      }
-      setScrollProgress(1);
-      onProgressChange?.(1);
-      return;
-    }
 
-    const container = containerRef.current;
-    const trackWrapper = trackWrapperRef.current;
-    const trackFill = trackFillRef.current;
-    const carVisual = carWrapperRef.current;
+      // ── Set initial invisible state (GSAP owns these, not CSS) ────────────
+      gsap.set(road, { opacity: 0, scaleY: 0.9 });
+      gsap.set(carVisual, { x: 0, opacity: 0, scale: 0.95 });
+      gsap.set('.hero-scroll-cue', { y: 15, opacity: 0 });
+      trail.style.width = '0px';
+      letters.forEach((l) => { l.style.opacity = '0'; });
+      cardElements.forEach((c) => {
+        gsap.set(c, { opacity: 0, y: 20, scale: 0.92 });
+      });
 
-    if (!container || !trackWrapper || !trackFill || !carVisual) return;
+      // ── Dynamic effects: trail width + letter reveal keyed to car x ───────
+      const updateDynamicEffects = () => {
+        const roadRect = road.getBoundingClientRect();
+        const carRect = carVisual.getBoundingClientRect();
+        const carX = Number(gsap.getProperty(carVisual, 'x')) || 0;
 
-    // Use gsap.context for clean scoping and React StrictMode safety
-    const ctx = gsap.context(() => {
-      // 1. Initial Load Timeline
-      const introTl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+        if (carX <= 1) {
+          trail.style.width = '0px';
+          letters.forEach((l) => { l.style.opacity = '0'; });
+          return;
+        }
+
+        // Trail fills up to behind the car's rear quarter
+        const trailWidth = Math.max(
+          0,
+          carRect.left + carRect.width * 0.25 - roadRect.left
+        );
+        trail.style.width = `${trailWidth}px`;
+
+        // Reveal each letter once the car's nose passes it
+        const carFrontX = carRect.left + carRect.width * 0.5;
+        letters.forEach((letter) => {
+          const { left } = letter.getBoundingClientRect();
+          letter.style.opacity = carFrontX >= left ? '1' : '0';
+        });
+      };
+
+      // ── 1. Entrance animation ─────────────────────────────────────────────
+      // Animates opacity/scale only. x is exclusively owned by the scroll TL.
+      const introTl = gsap.timeline({
+        defaults: { ease: 'power2.out' },
+        onComplete: () => ScrollTrigger.refresh(),
+      });
 
       introTl
-        .fromTo(
-          '.hero-top-text',
-          { y: -30, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.9 }
-        )
-        .fromTo(
-          '.hero-bottom-text',
-          { y: 30, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.9 },
-          '-=0.7'
-        )
-        .fromTo(
-          trackWrapper,
-          { scaleX: 0.9, opacity: 0 },
-          { scaleX: 1, opacity: 1, duration: 0.8 },
-          '-=0.6'
-        )
-        .fromTo(
-          carVisual,
-          { x: -120, opacity: 0 },
-          { x: 0, opacity: 1, duration: 1 },
-          '-=0.5'
-        );
+        .to(road, { opacity: 1, scaleY: 1, duration: 0.6 })
+        .to(carVisual, { opacity: 1, scale: 1, duration: 0.6 }, '-=0.3')
+        .to('.hero-scroll-cue', { y: 0, opacity: 1, duration: 0.5 }, '-=0.2');
 
-      // 2. Responsive Animation via gsap.matchMedia
+      // ── 2. Scroll-driven animation ────────────────────────────────────────
       const mm = gsap.matchMedia();
 
       mm.add(
@@ -100,229 +124,167 @@ export default function HeroSection({
             isMobile: boolean;
           };
 
-          // Calculate travel distance: from start pad to right screen edge
-          const calculateTravel = () => {
-            const trackWidth = trackWrapper.offsetWidth;
-            const carWidth = carVisual.offsetWidth || 340;
-            // Car travels across full width, front exiting past the right border
-            return trackWidth - (isMobile ? 120 : 60);
+          // Travel distance recalculated on every ScrollTrigger refresh
+          // via invalidateOnRefresh: true.
+          //
+          // The reference animation shows the car exiting the right side so the
+          // full headline is revealed. We target roadWidth so the car's leading
+          // edge aligns with the road's right boundary, fully exposing the text.
+          // A 30% carWidth offset keeps the car's rear visible (matching reference).
+          const getTravel = () => {
+            const roadW = road.offsetWidth;
+            const carW = Math.max(carVisual.scrollWidth, carVisual.offsetWidth);
+            // Car exits right side; rear remains partially visible
+            return Math.max(0, roadW - carW * 0.3);
           };
 
-          // Main Scroll-Driven Scrub Timeline
+          // Pin duration — the section grows by this amount via GSAP pinSpacing
+          const pinEnd = isMobile ? '+=1800' : '+=2400';
+
           const scrollTl = gsap.timeline({
             scrollTrigger: {
-              trigger: container,
+              trigger: container,  // the outer section drives the scroll
               start: 'top top',
-              end: isMobile ? '+=1400' : '+=2200',
-              pin: true,
-              scrub: 0.8,
+              end: pinEnd,
+              pin: track,          // the viewport panel is pinned
+              pinSpacing: true,    // GSAP adds spacer so the section scrolls
+              scrub: 1,
               anticipatePin: 1,
               invalidateOnRefresh: true,
               onUpdate: (self) => {
-                const p = self.progress;
-                setScrollProgress(p);
-                onProgressChange?.(p);
+                onProgressChange?.(self.progress);
+                updateDynamicEffects();
+              },
+              onRefresh: () => {
+                updateDynamicEffects();
               },
             },
           });
 
-          // Animation 1: Move car across track
+          // Scroll cue fades out immediately on first scroll
+          scrollTl.to(
+            '.hero-scroll-cue',
+            { opacity: 0, ease: 'power1.out', duration: 0.04 },
+            0
+          );
+
+          // Car drives across the road
           scrollTl.to(
             carVisual,
-            {
-              x: () => calculateTravel(),
-              ease: 'none',
-              duration: 1,
-            },
+            { x: getTravel, ease: 'none', duration: 1 },
             0
           );
 
-          // Animation 2: Expand active electric green track fill directly behind car
-          scrollTl.to(
-            trackFill,
-            {
-              width: '100%',
-              ease: 'none',
-              duration: 1,
-            },
-            0
-          );
-
-          // Animation 3: Reveal Metric Cards sequentially along scroll progress
-          const cardElements = container.querySelectorAll('.metric-card');
-
-          cardElements.forEach((card, idx) => {
-            const targetData = METRIC_CARDS[idx];
-            const startProgress = Math.max(0, targetData.progressTrigger - 0.08);
-            const isTop = targetData.position === 'top';
-
+          // Metric cards pop in as the car passes their checkpoints
+          METRIC_CARDS.forEach((card, idx) => {
+            const el = cardElements[idx];
+            if (!el) return;
             scrollTl.fromTo(
-              card,
-              {
-                opacity: 0,
-                y: isTop ? -35 : 35,
-                scale: 0.88,
-              },
-              {
-                opacity: 1,
-                y: 0,
-                scale: 1,
-                ease: 'power2.out',
-                duration: 0.22,
-              },
-              startProgress
+              el,
+              { opacity: 0, y: card.position === 'top' ? -20 : 20, scale: 0.92 },
+              { opacity: 1, y: 0, scale: 1, ease: 'power2.out', duration: 0.16 },
+              card.progressTrigger
             );
           });
         }
       );
-    }, containerRef);
-
-    return () => {
-      ctx.revert(); // Complete GSAP cleanup
-    };
-  }, [reducedMotion, onProgressChange]);
+    },
+    // Dependencies: re-run when reducedMotion changes
+    { scope: containerRef, dependencies: [reducedMotion] }
+  );
 
   return (
-    <div
+    <section
       ref={containerRef}
-      id="experience"
-      className="relative w-full h-screen bg-[#090B0A] text-white overflow-hidden select-none"
+      id="hero-experience"
+      className="relative w-full bg-[#121212] select-none"
+      // minHeight prevents empty page before GSAP initialises.
+      // GSAP pinSpacing extends the section height to create scroll space.
+      style={{ minHeight: '100vh' }}
     >
-      {/* Editorial and telemetry overlays */}
-      <HeroHeadline revealProgress={scrollProgress} />
-
-      {/* Subtle ambient lighting */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/4 -translate-y-1/2 w-[500px] h-[500px] bg-[#C7FF35]/5 rounded-full blur-[140px]" />
-        <div className="absolute top-1/2 right-1/4 -translate-y-1/2 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-[120px]" />
-      </div>
-
-      {/* ========================================================================= */}
-      {/* THE CENTRAL SPEED TRACK (Matching Reference Architecture)                */}
-      {/* ========================================================================= */}
-      <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-36 sm:h-44 md:h-52 flex items-center">
-        {/* Track Container */}
+      {/*
+        Pinned Viewport Track.
+        ⚠️  No CSS `sticky` here — GSAP pin: track takes full control.
+             CSS sticky + GSAP pin on the same element causes position conflicts.
+      */}
+      <div
+        ref={trackRef}
+        id="hero-track"
+        className="w-full h-screen bg-[#d1d1d1] flex items-center justify-center overflow-hidden"
+      >
+        {/* ================================================================ */}
+        {/* ROAD                                                              */}
+        {/* ================================================================ */}
         <div
-          ref={trackWrapperRef}
-          className="relative w-full h-full bg-[#151817] border-y border-white/10 shadow-[inset_0_0_50px_rgba(0,0,0,0.8)] flex items-center overflow-hidden"
+          ref={roadRef}
+          id="road"
+          className="relative w-screen h-36 sm:h-44 md:h-52 bg-[#1e1e1e] overflow-hidden flex items-center"
         >
-          {/* Track Texture Lines (Asphalt / Grid feel) */}
+          {/* Green trail — grows behind the car */}
           <div
-            className="absolute inset-0 opacity-15 pointer-events-none"
-            style={{
-              backgroundImage:
-                'repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 2px, transparent 2px, transparent 40px)',
-            }}
+            ref={trailRef}
+            id="trail"
+            className="absolute top-0 left-0 bottom-0 z-[1] bg-[#45db7d] pointer-events-none will-change-[width]"
+            style={{ width: reducedMotion ? '100%' : '0px' }}
           />
 
-          {/* Center road divider dashed line */}
-          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[2px] flex space-x-6 justify-around opacity-20 pointer-events-none">
-            {Array.from({ length: 30 }).map((_, i) => (
-              <span key={i} className="inline-block w-8 h-[2px] bg-white/40" />
-            ))}
-          </div>
+          {/* Headline text inside the road */}
+          <HeroHeadline />
 
-          {/* BASE LAYER HEADLINE (Muted dark gray on default track) */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 px-8">
-            <h2 className="text-3xl sm:text-5xl md:text-7xl lg:text-8xl font-black uppercase tracking-[0.25em] text-neutral-700/60 select-none whitespace-nowrap">
-              WELCOME ITZFIZZ
-            </h2>
-          </div>
-
-          {/* ACTIVE LAYER: Vibrant Electric Lime Fill revealing bold dark headline */}
-          <div
-            ref={trackFillRef}
-            className="absolute top-0 left-0 bottom-0 z-20 overflow-hidden bg-[#C7FF35] shadow-[0_0_35px_rgba(199,255,55,0.4)] pointer-events-none will-change-[width]"
-            style={{ width: reducedMotion ? '100%' : '140px' }}
-          >
-            {/* The revealed bold dark headline inside active green track */}
-            <div className="absolute inset-0 w-screen h-full flex items-center justify-center px-8">
-              <h2 className="text-3xl sm:text-5xl md:text-7xl lg:text-8xl font-black uppercase tracking-[0.25em] text-[#090B0A] select-none whitespace-nowrap">
-                WELCOME ITZFIZZ
-              </h2>
-            </div>
-
-            {/* Glowing edge pulse where the car touches */}
-            <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-r from-transparent to-white/60 blur-[2px]" />
-          </div>
-
-          {/* START PAD (Green Start Zone at far left edge matching reference) */}
-          <div className="absolute left-0 top-0 bottom-0 w-16 sm:w-24 bg-[#a6e226] border-r-2 border-black/40 z-20 flex flex-col justify-between py-2 px-1 text-[9px] font-mono text-black font-extrabold uppercase select-none">
-            <span>START</span>
-            <div className="w-full h-1 bg-black/30" />
-            <span>00:00</span>
-          </div>
-
-          {/* FINISH LINE (Checkered finish marker at far right edge) */}
-          <div
-            className="absolute right-0 top-0 bottom-0 w-10 sm:w-16 z-10 opacity-30 pointer-events-none"
-            style={{
-              backgroundImage:
-                'repeating-conic-gradient(#fff 0% 25%, #000 0% 50%) 50% / 14px 14px',
-            }}
-          />
-
-          {/* THE CAR VISUAL (Translations driven by GSAP ScrollTrigger) */}
+          {/* Car — GSAP animates `x` on this wrapper */}
           <div
             ref={carWrapperRef}
-            className="absolute left-4 sm:left-10 top-0 bottom-0 z-30 flex items-center will-change-transform"
+            id="car-wrapper"
+            className="absolute top-0 left-0 bottom-0 z-10 h-full flex items-center will-change-transform"
           >
-            <ProductVisual progress={scrollProgress} />
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* FLOATING METRIC CARDS (Positioned along the scroll journey)               */}
-      {/* ========================================================================= */}
-      <div className="absolute inset-0 pointer-events-none z-40 max-w-7xl mx-auto px-4">
-        {/* Desktop Absolute Positions matching the reference's 4 cards */}
-        <div className="hidden md:block absolute inset-0">
-          {/* Card 1: Top Left-Center */}
-          <div className="absolute top-[8%] left-[16%]">
-            <MetricCard card={METRIC_CARDS[0]} index={0} />
-          </div>
-
-          {/* Card 2: Top Right-Center */}
-          <div className="absolute top-[8%] left-[54%]">
-            <MetricCard card={METRIC_CARDS[1]} index={1} />
-          </div>
-
-          {/* Card 3: Bottom Center-Left */}
-          <div className="absolute bottom-[8%] left-[32%]">
-            <MetricCard card={METRIC_CARDS[2]} index={2} />
-          </div>
-
-          {/* Card 4: Bottom Right-Center */}
-          <div className="absolute bottom-[8%] left-[68%]">
-            <MetricCard card={METRIC_CARDS[3]} index={3} />
+            <ProductVisual />
           </div>
         </div>
 
-        {/* Mobile / Tablet Responsive Stacking */}
-        <div className="md:hidden absolute inset-0 flex flex-col justify-between py-20 px-2 pointer-events-none">
-          {/* Top Mobile Card Slot */}
-          <div className="flex justify-center">
-            {scrollProgress < 0.5 ? (
+        {/* ================================================================ */}
+        {/* METRIC CARDS                                                      */}
+        {/* ================================================================ */}
+        <div className="absolute inset-0 pointer-events-none z-20">
+          {/* Desktop & Tablet */}
+          <div className="hidden sm:block absolute inset-0">
+            <div className="absolute top-[5%] md:top-[6%] right-[30%]">
               <MetricCard card={METRIC_CARDS[0]} index={0} />
-            ) : (
+            </div>
+            <div className="absolute bottom-[5%] md:bottom-[6%] right-[35%]">
               <MetricCard card={METRIC_CARDS[1]} index={1} />
-            )}
+            </div>
+            <div className="absolute top-[5%] md:top-[6%] right-[10%]">
+              <MetricCard card={METRIC_CARDS[2]} index={2} />
+            </div>
+            <div className="absolute bottom-[5%] md:bottom-[6%] right-[12.5%]">
+              <MetricCard card={METRIC_CARDS[3]} index={3} />
+            </div>
           </div>
 
-          {/* Bottom Mobile Card Slot */}
-          <div className="flex justify-center">
-            {scrollProgress < 0.75 ? (
-              <MetricCard card={METRIC_CARDS[2]} index={2} />
-            ) : (
-              <MetricCard card={METRIC_CARDS[3]} index={3} />
-            )}
+          {/* Mobile */}
+          <div className="sm:hidden absolute inset-0 flex flex-col justify-between py-20 px-3 pointer-events-none">
+            <div className="flex justify-between items-center gap-2">
+              <div className="max-w-[48%]">
+                <MetricCard card={METRIC_CARDS[0]} index={0} />
+              </div>
+              <div className="max-w-[48%]">
+                <MetricCard card={METRIC_CARDS[2]} index={2} />
+              </div>
+            </div>
+            <div className="flex justify-between items-center gap-2">
+              <div className="max-w-[48%]">
+                <MetricCard card={METRIC_CARDS[1]} index={1} />
+              </div>
+              <div className="max-w-[48%]">
+                <MetricCard card={METRIC_CARDS[3]} index={3} />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Bottom Telemetry & Scroll Cue */}
-      <ScrollCue progress={scrollProgress} />
-    </div>
+        {/* Scroll Cue */}
+        <ScrollCue />
+      </div>
+    </section>
   );
 }
